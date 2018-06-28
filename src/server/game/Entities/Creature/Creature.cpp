@@ -172,12 +172,8 @@ uint32 CreatureTemplate::GetFirstVisibleModel() const
 
 void CreatureTemplate::InitializeQueryData()
 {
-    WorldPacket queryTemp;
     for (uint8 loc = LOCALE_enUS; loc < TOTAL_LOCALES; ++loc)
-    {
-        queryTemp = BuildQueryData(static_cast<LocaleConstant>(loc));
-        QueryData[loc] = queryTemp;
-    }
+        QueryData[loc] = BuildQueryData(static_cast<LocaleConstant>(loc));
 }
 
 WorldPacket CreatureTemplate::BuildQueryData(LocaleConstant loc) const
@@ -219,7 +215,8 @@ WorldPacket CreatureTemplate::BuildQueryData(LocaleConstant loc) const
                 queryTemp.Stats.QuestItems[i] = (*items)[i];
 
     queryTemp.Stats.CreatureMovementInfoID = movementId;
-    return *queryTemp.Write();
+    queryTemp.Write();
+    return queryTemp.Move();
 }
 
 bool AssistDelayEvent::Execute(uint64 /*e_time*/, uint32 /*p_time*/)
@@ -332,7 +329,7 @@ void Creature::DisappearAndDie()
 
 bool Creature::IsReturningHome() const
 {
-    if (GetMotionMaster()->GetMotionSlotType(MOTION_SLOT_ACTIVE) == HOME_MOTION_TYPE)
+    if (GetMotionMaster()->GetCurrentMovementGeneratorType() == HOME_MOTION_TYPE)
         return true;
 
     return false;
@@ -765,8 +762,7 @@ void Creature::Update(uint32 diff)
                 IsAIEnabled = true;
                 if (!IsInEvadeMode() && LastCharmerGUID)
                     if (Unit* charmer = ObjectAccessor::GetUnit(*this, LastCharmerGUID))
-                        if (CanStartAttack(charmer, true))
-                            i_AI->AttackStart(charmer);
+                        EngageWithTarget(charmer);
 
                 LastCharmerGUID.Clear();
             }
@@ -976,7 +972,6 @@ void Creature::DoFleeToGetAssistance()
         UpdateSpeed(MOVE_RUN);
 
         if (!creature)
-            //SetFeared(true, EnsureVictim()->GetGUID(), 0, sWorld->getIntConfig(CONFIG_CREATURE_FAMILY_FLEE_DELAY));
             /// @todo use 31365
             SetControlled(true, UNIT_STATE_FLEEING);
         else
@@ -1045,7 +1040,7 @@ void Creature::Motion_Initialize()
             m_formation->FormationReset(false);
         else if (m_formation->IsFormed())
         {
-            GetMotionMaster()->MoveIdle(); //wait the order of leader
+            GetMotionMaster()->MoveIdle(); // wait the order of leader
             return;
         }
     }
@@ -1847,8 +1842,8 @@ bool Creature::CanStartAttack(Unit const* who, bool force) const
         return false;
 
     // This set of checks is should be done only for creatures
-    if ((IsImmuneToNPC() && !who->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PVP_ATTACKABLE))
-        || (IsImmuneToPC() && who->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PVP_ATTACKABLE)))
+    if ((IsImmuneToNPC() && !who->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED))
+        || (IsImmuneToPC() && who->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED)))
         return false;
 
     // Do not attack non-combat pets
@@ -2078,8 +2073,9 @@ void Creature::Respawn(bool force)
                 SetNativeDisplayId(displayID);
             }
 
-            GetMotionMaster()->InitDefault();
-            //Re-initialize reactstate that could be altered by movementgenerators
+            GetMotionMaster()->InitializeDefault();
+
+            // Re-initialize reactstate that could be altered by movementgenerators
             InitializeReactState();
 
             if (IsAIEnabled) // reset the AI to be sure no dirty or uninitialized values will be used till next tick
@@ -2586,11 +2582,7 @@ uint32 Creature::GetShieldBlockValue() const                  //dunno mob block 
 
 bool Creature::HasSpell(uint32 spellID) const
 {
-    uint8 i;
-    for (i = 0; i < MAX_CREATURE_SPELLS; ++i)
-        if (spellID == m_spells[i])
-            break;
-    return i < MAX_CREATURE_SPELLS;                         //broke before end of iteration of known spells
+    return std::find(std::begin(m_spells), std::end(m_spells), spellID) != std::end(m_spells);
 }
 
 time_t Creature::GetRespawnTimeEx() const

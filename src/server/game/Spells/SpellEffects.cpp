@@ -1212,10 +1212,6 @@ void Spell::EffectApplyAura(SpellEffIndex effIndex)
         aurApp = unitTarget->_CreateAuraApplication(_spellAura, 1 << effIndex);
     else
         aurApp->UpdateApplyEffectMask(aurApp->GetEffectsToApply() | 1 << effIndex);
-
-    // apply effect on target (skip for reapply)
-    if (!aurApp->HasEffect(effIndex))
-        unitTarget->_ApplyAuraEffect(_spellAura, effIndex);
 }
 
 void Spell::EffectUnlearnSpecialization(SpellEffIndex effIndex)
@@ -2306,7 +2302,7 @@ void Spell::EffectSummonType(SpellEffIndex effIndex)
                             // randomize position for multiple summons
                             pos = caster->GetRandomPoint(*destTarget, radius);
 
-                        summon = caster->SummonCreature(entry, pos, summonType, duration);
+                        summon = caster->SummonCreature(entry, pos, summonType, duration, 0, m_spellInfo->Id);
                         if (!summon)
                             continue;
 
@@ -2314,7 +2310,6 @@ void Spell::EffectSummonType(SpellEffIndex effIndex)
                         {
                             summon->SetOwnerGUID(caster->GetGUID());
                             summon->SetFaction(caster->GetFaction());
-                            summon->SetUInt32Value(UNIT_CREATED_BY_SPELL, m_spellInfo->Id);
                         }
 
                         ExecuteLogEffectSummonObject(effIndex, summon);
@@ -2534,11 +2529,7 @@ void Spell::EffectDistract(SpellEffIndex /*effIndex*/)
     if (unitTarget->HasUnitState(UNIT_STATE_CONFUSED | UNIT_STATE_STUNNED | UNIT_STATE_FLEEING))
         return;
 
-    if (unitTarget->GetTypeId() == TYPEID_UNIT)
-        unitTarget->GetMotionMaster()->MoveDistract(damage * IN_MILLISECONDS);
-
-    unitTarget->StopMoving();
-    unitTarget->SetFacingTo(unitTarget->GetAngle(destTarget));
+    unitTarget->GetMotionMaster()->MoveDistract(damage * IN_MILLISECONDS, unitTarget->GetAbsoluteAngle(destTarget));
 }
 
 void Spell::EffectPickPocket(SpellEffIndex /*effIndex*/)
@@ -5669,7 +5660,7 @@ void Spell::SummonGuardian(uint32 i, uint32 entry, SummonPropertiesEntry const* 
             summon->SetFaction(unitCaster->GetFaction());
 
         if (summon->HasUnitTypeMask(UNIT_MASK_MINION) && m_targets.HasDst())
-            ((Minion*)summon)->SetFollowAngle(unitCaster->GetAngle(summon));
+            ((Minion*)summon)->SetFollowAngle(unitCaster->GetAbsoluteAngle(summon));
 
         if (summon->GetEntry() == 27893)
         {
